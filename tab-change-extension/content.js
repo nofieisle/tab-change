@@ -150,6 +150,18 @@
       title.textContent = tab.title || "New Tab";
       item.appendChild(title);
 
+      // クリックで選択・確定
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        selectedIndex = index;
+        chrome.runtime.sendMessage(
+          { type: "switchTab", tabId: tab.id },
+          () => {}
+        );
+        hideOverlay();
+        resetState();
+      });
+
       fragment.appendChild(item);
     });
 
