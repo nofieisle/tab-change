@@ -6,7 +6,6 @@
 
   let overlayHost = null; // Shadow DOM ホスト要素
   let shadowRoot = null;
-  let overlayEl = null; // オーバーレイのルート要素
   let tabListEl = null; // タブリストコンテナ
   let isVisible = false;
   let tabList = []; // 現在のタブリスト
@@ -39,25 +38,13 @@
 
     const style = document.createElement("style");
     style.textContent = `
-      .tab-change-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 2147483647;
-        background: #000;
-        pointer-events: none;
-      }
-      .tab-change-overlay.visible {
-        display: flex;
-        pointer-events: all;
-      }
       .tab-change-container {
-        display: flex;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 2147483647;
+        display: none;
         flex-wrap: wrap;
         justify-content: center;
         gap: 8px;
@@ -68,6 +55,9 @@
         background: #282828;
         border-radius: 16px;
         border: 1px solid #444;
+      }
+      .tab-change-container.visible {
+        display: flex;
       }
       .tab-change-item {
         display: flex;
@@ -122,15 +112,11 @@
       }
     `;
 
-    overlayEl = document.createElement("div");
-    overlayEl.className = "tab-change-overlay";
-
     tabListEl = document.createElement("div");
     tabListEl.className = "tab-change-container";
 
-    overlayEl.appendChild(tabListEl);
     shadowRoot.appendChild(style);
-    shadowRoot.appendChild(overlayEl);
+    shadowRoot.appendChild(tabListEl);
     document.documentElement.appendChild(overlayHost);
   }
 
@@ -199,7 +185,7 @@
     isVisible = true;
 
     renderTabList();
-    overlayEl.classList.add("visible");
+    tabListEl.classList.add("visible");
   }
 
   // オーバーレイを非表示
@@ -207,8 +193,8 @@
     if (!isVisible) return;
 
     isVisible = false;
-    if (overlayEl) {
-      overlayEl.classList.remove("visible");
+    if (tabListEl) {
+      tabListEl.classList.remove("visible");
     }
   }
 
