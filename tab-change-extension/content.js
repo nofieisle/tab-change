@@ -16,16 +16,25 @@
 
   // タブリストを事前キャッシュ（Service Worker起動を促す）
   function prefetchTabList() {
-    chrome.runtime.sendMessage({ type: "getTabList" }, (response) => {
-      if (response && response.tabs) {
-        cachedTabList = response.tabs;
-        cachedCurrentTabId = response.currentTabId;
-      }
-    });
+    try {
+      chrome.runtime.sendMessage({ type: "getTabList" }, (response) => {
+        if (chrome.runtime.lastError) return;
+        if (response && response.tabs) {
+          cachedTabList = response.tabs;
+          cachedCurrentTabId = response.currentTabId;
+        }
+      });
+    } catch (e) {
+      // Service Worker未準備時は無視
+    }
   }
 
-  // ページ読み込み時とフォーカス復帰時にキャッシュ更新
-  prefetchTabList();
+  // ページ読み込み完了後とフォーカス復帰時にキャッシュ更新
+  if (document.readyState === "complete") {
+    prefetchTabList();
+  } else {
+    window.addEventListener("load", prefetchTabList, { once: true });
+  }
   window.addEventListener("focus", prefetchTabList);
 
   // Shadow DOM内にオーバーレイを構築（初回のみ）
@@ -150,7 +159,13 @@
       title.textContent = tab.title || "New Tab";
       item.appendChild(title);
 
-      // クリックで選択・確定
+      // ホバーで選択を追従
+      item.addEventListener("mouseenter", () => {
+        selectedIndex = index;
+        updateSelection();
+      });
+
+      // クリックで確定
       item.addEventListener("mousedown", (e) => {
         e.preventDefault();
         selectedIndex = index;
