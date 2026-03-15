@@ -86,7 +86,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// タブ情報を返す（ブラウザの並び順、MRUで直前タブのIDも返す）
+// タブ情報を返す（MRU順＝最近使った順）
 async function handleGetTabList(senderTabId) {
   // Content Scriptが注入できないURLを除外
   const isAccessible = (url) =>
@@ -99,19 +99,31 @@ async function handleGetTabList(senderTabId) {
     !url.startsWith("about:") &&
     !url.startsWith("chrome:untab");
 
-  // ブラウザのタブ並び順（windowId, index）で取得
   const tabs = await chrome.tabs.query({});
-  tabs.sort((a, b) => a.windowId - b.windowId || a.index - b.index);
+  const tabMap = new Map(tabs.map((tab) => [tab.id, tab]));
 
-  const result = tabs
-    .filter((tab) => isAccessible(tab.url))
-    .map((tab) => ({
-      id: tab.id,
-      title: tab.title || "New Tab",
-      favIconUrl: tab.favIconUrl || "",
-      url: tab.url || "",
-      windowId: tab.windowId,
-    }));
+  // MRUリスト順にタブを並べる（先頭が最近使ったタブ）
+  const sorted = [];
+  for (const id of mruList) {
+    const tab = tabMap.get(id);
+    if (tab && isAccessible(tab.url)) {
+      sorted.push(tab);
+    }
+  }
+  // MRUリストに含まれないタブがあれば末尾に追加
+  for (const tab of tabs) {
+    if (!mruList.includes(tab.id) && isAccessible(tab.url)) {
+      sorted.push(tab);
+    }
+  }
+
+  const result = sorted.map((tab) => ({
+    id: tab.id,
+    title: tab.title || "New Tab",
+    favIconUrl: tab.favIconUrl || "",
+    url: tab.url || "",
+    windowId: tab.windowId,
+  }));
 
   return { tabs: result, currentTabId: senderTabId };
 }

@@ -72,7 +72,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        width: 96px;
+        width: 144px;
         padding: 12px 8px;
         border-radius: 12px;
         cursor: pointer;
@@ -115,8 +115,9 @@
         text-align: center;
         width: 100%;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
         line-height: 1.3;
       }
     `;
