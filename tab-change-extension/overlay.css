@@ -1,0 +1,13 @@
+/* Tab Change Overlay - 外部CSSファイル */
+/* メインのスタイルはShadow DOM内に定義されるため、 */
+/* このファイルはホスト要素の基本スタイルのみ */
+
+#tab-change-overlay-host {
+  all: initial;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 2147483647;
+}
