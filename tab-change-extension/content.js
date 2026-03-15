@@ -254,10 +254,8 @@
     tabList = tabs;
     if (tabList.length <= 1) return;
 
-    const currentIdx = currentTabId
-      ? tabList.findIndex((t) => t.id === currentTabId)
-      : -1;
-    selectedIndex = currentIdx >= 0 ? currentIdx : 0;
+    // MRU順で先頭は現在のタブなので、直前に使ったタブ（2番目）を初期選択
+    selectedIndex = tabList.length >= 2 ? 1 : 0;
     showOverlay();
   }
 
