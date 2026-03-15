@@ -12,8 +12,24 @@
   let tabList = []; // 現在のタブリスト
   let selectedIndex = 0;
   let altPressed = false;
+  let cachedTabList = null; // タブリストのキャッシュ
+  let cachedCurrentTabId = null;
 
-  // Shadow DOM内にオーバーレイを構築
+  // タブリストを事前キャッシュ（Service Worker起動を促す）
+  function prefetchTabList() {
+    chrome.runtime.sendMessage({ type: "getTabList" }, (response) => {
+      if (response && response.tabs) {
+        cachedTabList = response.tabs;
+        cachedCurrentTabId = response.currentTabId;
+      }
+    });
+  }
+
+  // ページ読み込み時とフォーカス復帰時にキャッシュ更新
+  prefetchTabList();
+  window.addEventListener("focus", prefetchTabList);
+
+  // Shadow DOM内にオーバーレイを構築（初回のみ）
   function createOverlay() {
     if (overlayHost) return;
 
@@ -21,7 +37,6 @@
     overlayHost.id = "tab-change-overlay-host";
     shadowRoot = overlayHost.attachShadow({ mode: "closed" });
 
-    // スタイルをShadow DOM内に適用
     const style = document.createElement("style");
     style.textContent = `
       .tab-change-overlay {
@@ -30,19 +45,15 @@
         left: 0;
         width: 100vw;
         height: 100vh;
-        display: flex;
+        display: none;
         align-items: center;
         justify-content: center;
         z-index: 2147483647;
-        background: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        opacity: 0;
-        transition: opacity 0.15s ease;
+        background: #000;
         pointer-events: none;
       }
       .tab-change-overlay.visible {
-        opacity: 1;
+        display: flex;
         pointer-events: all;
       }
       .tab-change-container {
@@ -54,10 +65,9 @@
         max-width: 80vw;
         max-height: 60vh;
         overflow-y: auto;
-        background: rgba(40, 40, 40, 0.85);
+        background: #282828;
         border-radius: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+        border: 1px solid #444;
       }
       .tab-change-item {
         display: flex;
@@ -68,7 +78,6 @@
         border-radius: 12px;
         cursor: pointer;
         border: 2px solid transparent;
-        transition: background 0.1s ease, border-color 0.1s ease;
         box-sizing: border-box;
       }
       .tab-change-item.selected {
@@ -127,13 +136,12 @@
 
   // タブリストをレンダリング
   function renderTabList() {
-    tabListEl.innerHTML = "";
+    const fragment = document.createDocumentFragment();
 
     tabList.forEach((tab, index) => {
       const item = document.createElement("div");
       item.className =
         "tab-change-item" + (index === selectedIndex ? " selected" : "");
-      item.dataset.index = index;
 
       // Favicon
       if (tab.favIconUrl) {
@@ -141,9 +149,9 @@
         img.className = "tab-change-favicon";
         img.src = tab.favIconUrl;
         img.alt = "";
+        img.loading = "eager";
         img.onerror = () => {
-          const fallback = createDefaultIcon(tab.title);
-          img.replaceWith(fallback);
+          img.replaceWith(createDefaultIcon(tab.title));
         };
         item.appendChild(img);
       } else {
@@ -156,8 +164,10 @@
       title.textContent = tab.title || "New Tab";
       item.appendChild(title);
 
-      tabListEl.appendChild(item);
+      fragment.appendChild(item);
     });
+
+    tabListEl.replaceChildren(fragment);
   }
 
   // デフォルトアイコンを生成
@@ -170,31 +180,26 @@
 
   // 選択アイテムの更新
   function updateSelection() {
-    const items = tabListEl.querySelectorAll(".tab-change-item");
-    items.forEach((item, i) => {
-      item.classList.toggle("selected", i === selectedIndex);
-    });
+    const items = tabListEl.children;
+    for (let i = 0; i < items.length; i++) {
+      items[i].classList.toggle("selected", i === selectedIndex);
+    }
 
     // 選択アイテムが見えるようにスクロール
-    const selectedItem = items[selectedIndex];
-    if (selectedItem) {
-      selectedItem.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (items[selectedIndex]) {
+      items[selectedIndex].scrollIntoView({ block: "nearest", inline: "nearest" });
     }
   }
 
   // オーバーレイを表示
-  async function showOverlay() {
+  function showOverlay() {
     if (tabList.length <= 1) return; // 単一タブ時は表示しない
 
     createOverlay();
     isVisible = true;
 
     renderTabList();
-
-    // フェードイン
-    requestAnimationFrame(() => {
-      overlayEl.classList.add("visible");
-    });
+    overlayEl.classList.add("visible");
   }
 
   // オーバーレイを非表示
@@ -230,37 +235,61 @@
     altPressed = false;
   }
 
+  // キャッシュまたはAPIからタブリストを取得して表示
+  function openWithTabs(tabs, currentTabId) {
+    tabList = tabs;
+    if (tabList.length <= 1) return;
+
+    const currentIdx = currentTabId
+      ? tabList.findIndex((t) => t.id === currentTabId)
+      : -1;
+    selectedIndex = currentIdx >= 0 ? currentIdx : 0;
+    showOverlay();
+  }
+
   // キーダウンハンドラ
   document.addEventListener(
     "keydown",
-    async (e) => {
+    (e) => {
       // Alt+Tab 検知
       if (e.altKey && e.key === "Tab") {
         e.preventDefault();
         e.stopPropagation();
 
         if (!isVisible) {
-          // 初回: タブリスト取得してオーバーレイ表示
+          // 初回: キャッシュがあれば即座に表示
           altPressed = true;
-          try {
-            const response = await chrome.runtime.sendMessage({
-              type: "getTabList",
+
+          if (cachedTabList && cachedTabList.length > 1) {
+            openWithTabs(cachedTabList, cachedCurrentTabId);
+            // バックグラウンドで最新リストを取得し、差分があれば更新
+            chrome.runtime.sendMessage({ type: "getTabList" }, (response) => {
+              if (response && response.tabs) {
+                cachedTabList = response.tabs;
+                cachedCurrentTabId = response.currentTabId;
+                // オーバーレイがまだ表示中で、タブ数が変わっていたら再描画
+                if (isVisible && response.tabs.length !== tabList.length) {
+                  const prevSelectedId = tabList[selectedIndex]?.id;
+                  tabList = response.tabs;
+                  const newIdx = prevSelectedId
+                    ? tabList.findIndex((t) => t.id === prevSelectedId)
+                    : -1;
+                  selectedIndex = newIdx >= 0 ? newIdx : 0;
+                  renderTabList();
+                }
+              }
             });
-            if (response && response.tabs) {
-              tabList = response.tabs;
-
-              if (tabList.length <= 1) return;
-
-              // 現在のタブを初期選択
-              const currentIdx = response.currentTabId
-                ? tabList.findIndex((t) => t.id === response.currentTabId)
-                : -1;
-              selectedIndex = currentIdx >= 0 ? currentIdx : 0;
-              await showOverlay();
-            }
-          } catch (err) {
-            // Content Scriptがdisconnectされた場合など
-            resetState();
+          } else {
+            // キャッシュなし: APIから取得
+            chrome.runtime.sendMessage({ type: "getTabList" }, (response) => {
+              if (response && response.tabs) {
+                cachedTabList = response.tabs;
+                cachedCurrentTabId = response.currentTabId;
+                if (altPressed) {
+                  openWithTabs(response.tabs, response.currentTabId);
+                }
+              }
+            });
           }
         } else {
           // Alt+Tab 連打: 選択を循環
