@@ -56,14 +56,16 @@
         display: none;
         flex-wrap: wrap;
         justify-content: center;
-        gap: 8px;
-        padding: 20px 24px;
-        max-width: 80vw;
-        max-height: 60vh;
+        gap: 10px;
+        padding: 20px;
+        width: max-content;
+        max-width: 95vw;
+        max-height: 70vh;
         overflow-y: auto;
         background: #282828;
         border-radius: 16px;
         border: 1px solid #444;
+        box-sizing: border-box;
       }
       .tab-change-container.visible {
         display: flex;
@@ -72,9 +74,10 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        width: 144px;
-        padding: 12px 8px;
-        border-radius: 12px;
+        width: 140px;
+        height: 140px;
+        padding: 16px 10px 12px;
+        border-radius: 14px;
         cursor: pointer;
         border: 2px solid transparent;
         box-sizing: border-box;
@@ -87,26 +90,28 @@
         background: rgba(255, 255, 255, 0.08);
       }
       .tab-change-favicon {
-        width: 48px;
-        height: 48px;
-        border-radius: 8px;
+        width: 72px;
+        height: 72px;
+        border-radius: 10px;
         margin-bottom: 8px;
         object-fit: contain;
         background: rgba(255, 255, 255, 0.05);
-        padding: 4px;
+        padding: 6px;
         box-sizing: border-box;
+        flex-shrink: 0;
       }
       .tab-change-favicon-default {
-        width: 48px;
-        height: 48px;
-        border-radius: 8px;
+        width: 72px;
+        height: 72px;
+        border-radius: 10px;
         margin-bottom: 8px;
         background: rgba(255, 255, 255, 0.1);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 20px;
+        font-size: 28px;
         color: rgba(255, 255, 255, 0.6);
+        flex-shrink: 0;
       }
       .tab-change-title {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -116,7 +121,7 @@
         width: 100%;
         overflow: hidden;
         display: -webkit-box;
-        -webkit-line-clamp: 2;
+        -webkit-line-clamp: 1;
         -webkit-box-orient: vertical;
         line-height: 1.3;
       }
@@ -254,8 +259,9 @@
     tabList = tabs;
     if (tabList.length <= 1) return;
 
-    // MRU順で先頭は現在のタブなので、直前に使ったタブ（2番目）を初期選択
-    selectedIndex = tabList.length >= 2 ? 1 : 0;
+    // 現在のタブの位置を探して、次のタブを初期選択（循環）
+    const currentIdx = tabList.findIndex((t) => t.id === currentTabId);
+    selectedIndex = currentIdx >= 0 ? (currentIdx + 1) % tabList.length : 0;
     showOverlay();
   }
 

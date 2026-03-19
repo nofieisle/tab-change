@@ -86,7 +86,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// タブ情報を返す（MRU順＝最近使った順）
+// タブ情報を返す（ブラウザの表示順）
 async function handleGetTabList(senderTabId) {
   // Content Scriptが注入できないURLを除外
   const isAccessible = (url) =>
@@ -100,22 +100,14 @@ async function handleGetTabList(senderTabId) {
     !url.startsWith("chrome:untab");
 
   const tabs = await chrome.tabs.query({});
-  const tabMap = new Map(tabs.map((tab) => [tab.id, tab]));
 
-  // MRUリスト順にタブを並べる（先頭が最近使ったタブ）
-  const sorted = [];
-  for (const id of mruList) {
-    const tab = tabMap.get(id);
-    if (tab && isAccessible(tab.url)) {
-      sorted.push(tab);
-    }
-  }
-  // MRUリストに含まれないタブがあれば末尾に追加
-  for (const tab of tabs) {
-    if (!mruList.includes(tab.id) && isAccessible(tab.url)) {
-      sorted.push(tab);
-    }
-  }
+  // ブラウザのタブ順（ウィンドウID → タブインデックス順）でソート
+  const sorted = tabs
+    .filter((tab) => isAccessible(tab.url))
+    .sort((a, b) => {
+      if (a.windowId !== b.windowId) return a.windowId - b.windowId;
+      return a.index - b.index;
+    });
 
   const result = sorted.map((tab) => ({
     id: tab.id,
