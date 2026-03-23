@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "macOS Cmd+Tab風の操作感でブラウザタブを素早く切り替え",
   "permissions": ["tabs", "storage"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },

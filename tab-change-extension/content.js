@@ -56,11 +56,11 @@
         display: none;
         flex-wrap: wrap;
         justify-content: center;
-        gap: 10px;
+        gap: 12px;
         padding: 20px;
         width: max-content;
         max-width: 95vw;
-        max-height: 70vh;
+        max-height: 80vh;
         overflow-y: auto;
         background: #282828;
         border-radius: 16px;
@@ -74,10 +74,9 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        width: 140px;
-        height: 140px;
-        padding: 16px 10px 12px;
-        border-radius: 14px;
+        width: 200px;
+        padding: 8px;
+        border-radius: 12px;
         cursor: pointer;
         border: 2px solid transparent;
         box-sizing: border-box;
@@ -89,39 +88,79 @@
       .tab-change-item:hover {
         background: rgba(255, 255, 255, 0.08);
       }
-      .tab-change-favicon {
-        width: 72px;
-        height: 72px;
-        border-radius: 10px;
-        margin-bottom: 8px;
-        object-fit: contain;
+      .tab-change-thumbnail {
+        width: 184px;
+        height: 115px;
+        border-radius: 8px;
+        object-fit: cover;
         background: rgba(255, 255, 255, 0.05);
-        padding: 6px;
-        box-sizing: border-box;
         flex-shrink: 0;
       }
-      .tab-change-favicon-default {
-        width: 72px;
-        height: 72px;
-        border-radius: 10px;
-        margin-bottom: 8px;
+      .tab-change-thumbnail-placeholder {
+        width: 184px;
+        height: 115px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.05);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .tab-change-thumbnail-placeholder .tab-change-favicon-large {
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        object-fit: contain;
+      }
+      .tab-change-thumbnail-placeholder .tab-change-favicon-default {
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
         background: rgba(255, 255, 255, 0.1);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 28px;
+        font-size: 22px;
+        color: rgba(255, 255, 255, 0.6);
+      }
+      .tab-change-info {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        width: 100%;
+        margin-top: 10px;
+        padding: 0 2px;
+        box-sizing: border-box;
+      }
+      .tab-change-favicon-small {
+        width: 30px;
+        height: 30px;
+        border-radius: 6px;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+      .tab-change-favicon-small-default {
+        width: 30px;
+        height: 30px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
         color: rgba(255, 255, 255, 0.6);
         flex-shrink: 0;
       }
       .tab-change-title {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-size: 11px;
+        font-size: 15px;
         color: rgba(255, 255, 255, 0.85);
         text-align: center;
         width: 100%;
         overflow: hidden;
         display: -webkit-box;
-        -webkit-line-clamp: 1;
+        -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         line-height: 1.3;
       }
@@ -144,26 +183,44 @@
       item.className =
         "tab-change-item" + (index === selectedIndex ? " selected" : "");
 
-      // Favicon
-      if (tab.favIconUrl) {
-        const img = document.createElement("img");
-        img.className = "tab-change-favicon";
-        img.src = tab.favIconUrl;
-        img.alt = "";
-        img.loading = "eager";
-        img.onerror = () => {
-          img.replaceWith(createDefaultIcon(tab.title));
+      // サムネイル or プレースホルダー
+      if (tab.thumbnail) {
+        const thumb = document.createElement("img");
+        thumb.className = "tab-change-thumbnail";
+        thumb.src = tab.thumbnail;
+        thumb.alt = "";
+        thumb.loading = "eager";
+        thumb.onerror = () => {
+          thumb.replaceWith(createPlaceholder(tab));
         };
-        item.appendChild(img);
+        item.appendChild(thumb);
       } else {
-        item.appendChild(createDefaultIcon(tab.title));
+        item.appendChild(createPlaceholder(tab));
       }
 
-      // タイトル
+      // Favicon + タイトル行
+      const info = document.createElement("div");
+      info.className = "tab-change-info";
+
+      if (tab.favIconUrl) {
+        const favicon = document.createElement("img");
+        favicon.className = "tab-change-favicon-small";
+        favicon.src = tab.favIconUrl;
+        favicon.alt = "";
+        favicon.onerror = () => {
+          favicon.replaceWith(createSmallDefaultIcon(tab.title));
+        };
+        info.appendChild(favicon);
+      } else {
+        info.appendChild(createSmallDefaultIcon(tab.title));
+      }
+
       const title = document.createElement("div");
       title.className = "tab-change-title";
       title.textContent = tab.title || "New Tab";
-      item.appendChild(title);
+      info.appendChild(title);
+
+      item.appendChild(info);
 
       // ホバーで選択を追従
       item.addEventListener("mouseenter", () => {
@@ -189,10 +246,37 @@
     tabListEl.replaceChildren(fragment);
   }
 
-  // デフォルトアイコンを生成
+  // サムネイルがない場合のプレースホルダー
+  function createPlaceholder(tab) {
+    const div = document.createElement("div");
+    div.className = "tab-change-thumbnail-placeholder";
+    if (tab.favIconUrl) {
+      const img = document.createElement("img");
+      img.className = "tab-change-favicon-large";
+      img.src = tab.favIconUrl;
+      img.alt = "";
+      img.onerror = () => {
+        img.replaceWith(createDefaultIcon(tab.title));
+      };
+      div.appendChild(img);
+    } else {
+      div.appendChild(createDefaultIcon(tab.title));
+    }
+    return div;
+  }
+
+  // デフォルトアイコン（プレースホルダー内用）
   function createDefaultIcon(title) {
     const div = document.createElement("div");
     div.className = "tab-change-favicon-default";
+    div.textContent = (title || "?")[0].toUpperCase();
+    return div;
+  }
+
+  // 小さいデフォルトアイコン（タイトル行用）
+  function createSmallDefaultIcon(title) {
+    const div = document.createElement("div");
+    div.className = "tab-change-favicon-small-default";
     div.textContent = (title || "?")[0].toUpperCase();
     return div;
   }
@@ -261,7 +345,7 @@
 
     // 現在のタブの位置を探して、次のタブを初期選択（循環）
     const currentIdx = tabList.findIndex((t) => t.id === currentTabId);
-    selectedIndex = currentIdx >= 0 ? (currentIdx + 1) % tabList.length : 0;
+    selectedIndex = currentIdx >= 0 ? currentIdx : 0;
     showOverlay();
   }
 
@@ -269,6 +353,29 @@
   document.addEventListener(
     "keydown",
     (e) => {
+      // Alt+矢印キーで移動（オーバーレイ表示中）
+      if (e.altKey && isVisible && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // 1行あたりの列数を計算
+        const containerWidth = tabListEl.offsetWidth - 40; // padding分を引く
+        const itemWidth = 200 + 12; // item幅 + gap
+        const cols = Math.max(1, Math.floor(containerWidth / itemWidth));
+
+        if (e.key === "ArrowRight") {
+          selectedIndex = (selectedIndex + 1) % tabList.length;
+        } else if (e.key === "ArrowLeft") {
+          selectedIndex = (selectedIndex - 1 + tabList.length) % tabList.length;
+        } else if (e.key === "ArrowDown") {
+          selectedIndex = Math.min(selectedIndex + cols, tabList.length - 1);
+        } else if (e.key === "ArrowUp") {
+          selectedIndex = Math.max(selectedIndex - cols, 0);
+        }
+        updateSelection();
+        return;
+      }
+
       // Alt+Tab 検知
       if (e.altKey && e.key === "Tab") {
         e.preventDefault();
