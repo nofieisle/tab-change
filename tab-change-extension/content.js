@@ -232,6 +232,7 @@
       item.addEventListener("mousedown", (e) => {
         e.preventDefault();
         selectedIndex = index;
+        cachedCurrentTabId = tab.id;
         chrome.runtime.sendMessage(
           { type: "switchTab", tabId: tab.id },
           () => {}
@@ -321,6 +322,7 @@
 
     const selectedTab = tabList[selectedIndex];
     if (selectedTab) {
+      cachedCurrentTabId = selectedTab.id;
       chrome.runtime.sendMessage(
         { type: "switchTab", tabId: selectedTab.id },
         () => {}
@@ -373,6 +375,34 @@
           selectedIndex = Math.max(selectedIndex - cols, 0);
         }
         updateSelection();
+        return;
+      }
+
+      // Alt+W で選択中のタブを閉じる（オーバーレイ表示中）
+      if (e.altKey && isVisible && e.code === "KeyW") {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const tabToClose = tabList[selectedIndex];
+        if (!tabToClose) return;
+
+        chrome.runtime.sendMessage(
+          { type: "closeTab", tabId: tabToClose.id },
+          (response) => {
+            if (response && response.success) {
+              tabList.splice(selectedIndex, 1);
+              if (tabList.length <= 1) {
+                hideOverlay();
+                resetState();
+                return;
+              }
+              if (selectedIndex >= tabList.length) {
+                selectedIndex = tabList.length - 1;
+              }
+              renderTabList();
+            }
+          }
+        );
         return;
       }
 

@@ -154,6 +154,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleSwitchTab(message.tabId).then(sendResponse);
     return true;
   }
+
+  if (message.type === "closeTab") {
+    handleCloseTab(message.tabId).then(sendResponse);
+    return true;
+  }
 });
 
 // タブ情報を返す（ブラウザの表示順）
@@ -189,6 +194,16 @@ async function handleGetTabList(senderTabId) {
   }));
 
   return { tabs: result, currentTabId: senderTabId };
+}
+
+// 指定タブを閉じる
+async function handleCloseTab(tabId) {
+  try {
+    await chrome.tabs.remove(tabId);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 }
 
 // 指定タブにフォーカスを移す
