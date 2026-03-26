@@ -86,7 +86,8 @@
         border-color: rgba(100, 149, 237, 0.8);
       }
       .tab-change-item:hover {
-        background: rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.3);
       }
       .tab-change-thumbnail {
         width: 184px;
@@ -221,12 +222,6 @@
       info.appendChild(title);
 
       item.appendChild(info);
-
-      // ホバーで選択を追従
-      item.addEventListener("mouseenter", () => {
-        selectedIndex = index;
-        updateSelection();
-      });
 
       // クリックで確定
       item.addEventListener("mousedown", (e) => {
