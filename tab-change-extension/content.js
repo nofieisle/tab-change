@@ -82,12 +82,13 @@
         box-sizing: border-box;
       }
       .tab-change-item.selected {
-        background: rgba(255, 255, 255, 0.15);
-        border-color: rgba(100, 149, 237, 0.8);
+        background: rgba(100, 149, 237, 0.15);
+        border-color: rgba(100, 149, 237, 0.7);
       }
       .tab-change-item:hover {
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.3);
+        background: rgba(100, 149, 237, 0.3);
+        border-color: rgba(100, 149, 237, 1);
+        box-shadow: 0 0 8px rgba(100, 149, 237, 0.4);
       }
       .tab-change-thumbnail {
         width: 184px;

@@ -178,7 +178,7 @@ async function handleGetTabList(senderTabId) {
 
   // ブラウザのタブ順（ウィンドウID → タブインデックス順）でソート
   const sorted = tabs
-    .filter((tab) => isAccessible(tab.url))
+    .filter((tab) => isAccessible(tab.url) && !tab.pinned)
     .sort((a, b) => {
       if (a.windowId !== b.windowId) return a.windowId - b.windowId;
       return a.index - b.index;
