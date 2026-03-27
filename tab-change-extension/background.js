@@ -209,7 +209,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// タブ情報を返す（ブラウザの表示順）
+// タブ情報を返す（送信元と同じウィンドウのみ、ブラウザの表示順）
 async function handleGetTabList(senderTabId) {
   // Content Scriptが注入できないURLを除外
   const isAccessible = (url) =>
@@ -222,19 +222,19 @@ async function handleGetTabList(senderTabId) {
     !url.startsWith("about:") &&
     !url.startsWith("chrome:untab");
 
-  const tabs = await chrome.tabs.query({});
+  // 送信元タブのウィンドウIDを特定
+  let senderWindowId = null;
+  try {
+    const senderTab = await chrome.tabs.get(senderTabId);
+    senderWindowId = senderTab.windowId;
+  } catch {
+    // 取得失敗時は全ウィンドウ対象
+  }
 
-  const sortByPosition = (a, b) => {
-    if (a.windowId !== b.windowId) return a.windowId - b.windowId;
-    return a.index - b.index;
-  };
+  const queryOpts = senderWindowId != null ? { windowId: senderWindowId } : {};
+  const tabs = await chrome.tabs.query(queryOpts);
 
-  // ブラウザのタブ順（ウィンドウID → タブインデックス順）でソート
-  const sorted = tabs
-    .filter((tab) => isAccessible(tab.url) && !tab.pinned)
-    .sort(sortByPosition);
-
-  const result = sorted.map((tab) => {
+  const mapTab = (tab) => {
     let favIcon = originalFavicons[tab.id] || "";
     if (!favIcon && tab.favIconUrl && !tab.favIconUrl.startsWith("data:")) {
       favIcon = tab.favIconUrl;
@@ -247,28 +247,21 @@ async function handleGetTabList(senderTabId) {
       windowId: tab.windowId,
       thumbnail: thumbnailCache[tab.id] || "",
     };
-  });
+  };
 
-  // ピン留めタブも別途返す（faviconはdata URL=枠付き加工済みを除外）
+  // ブラウザのタブ順（インデックス順）でソート
+  const sorted = tabs
+    .filter((tab) => isAccessible(tab.url) && !tab.pinned)
+    .sort((a, b) => a.index - b.index)
+    .map(mapTab);
+
+  // ピン留めタブ（faviconはdata URL=枠付き加工済みを除外）
   const pinnedTabs = tabs
     .filter((tab) => isAccessible(tab.url) && tab.pinned)
-    .sort(sortByPosition)
-    .map((tab) => {
-      let favIcon = originalFavicons[tab.id] || "";
-      if (!favIcon && tab.favIconUrl && !tab.favIconUrl.startsWith("data:")) {
-        favIcon = tab.favIconUrl;
-      }
-      return {
-        id: tab.id,
-        title: tab.title || "New Tab",
-        favIconUrl: favIcon,
-        url: tab.url || "",
-        windowId: tab.windowId,
-        thumbnail: thumbnailCache[tab.id] || "",
-      };
-    });
+    .sort((a, b) => a.index - b.index)
+    .map(mapTab);
 
-  return { tabs: result, pinnedTabs, currentTabId: senderTabId };
+  return { tabs: sorted, pinnedTabs, currentTabId: senderTabId };
 }
 
 // 指定タブを閉じる

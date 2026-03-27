@@ -445,10 +445,18 @@
     const selectedTab = tabList[selectedIndex];
     if (selectedTab) {
       cachedCurrentTabId = selectedTab.id;
-      chrome.runtime.sendMessage(
-        { type: "switchTab", tabId: selectedTab.id },
-        () => {}
-      );
+      try {
+        chrome.runtime.sendMessage(
+          { type: "switchTab", tabId: selectedTab.id },
+          () => {
+            if (chrome.runtime.lastError) {
+              // 接続切れ時は無視
+            }
+          }
+        );
+      } catch {
+        // runtime無効時は無視
+      }
     }
 
     hideOverlay();
@@ -500,6 +508,23 @@
         return;
       }
 
+      // Enterで確定（オーバーレイ表示中）
+      if (isVisible && e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        confirmSelection();
+        return;
+      }
+
+      // Escでキャンセル（オーバーレイ表示中）
+      if (isVisible && e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        hideOverlay();
+        resetState();
+        return;
+      }
+
       // Alt+W で選択中のタブを閉じる（オーバーレイ表示中）
       if (e.altKey && isVisible && e.code === "KeyW") {
         e.preventDefault();
@@ -534,41 +559,37 @@
         e.stopPropagation();
 
         if (!isVisible) {
-          // 初回: キャッシュがあれば即座に表示
           altPressed = true;
 
+          // キャッシュがあれば即座に表示（レスポンシブ感を出す）
           if (cachedTabList && cachedTabList.length > 1) {
             openWithTabs(cachedTabList, cachedCurrentTabId);
-            // バックグラウンドで最新リストを取得し、差分があれば更新
+          }
+
+          // 常にbackgroundから最新データを取得
+          try {
             chrome.runtime.sendMessage({ type: "getTabList" }, (response) => {
-              if (response && response.tabs) {
-                cachedTabList = response.tabs;
-                cachedCurrentTabId = response.currentTabId;
-                cachedPinnedTabs = response.pinnedTabs || [];
-                // オーバーレイがまだ表示中で、タブ数が変わっていたら再描画
-                if (isVisible && response.tabs.length !== tabList.length) {
-                  const prevSelectedId = tabList[selectedIndex]?.id;
-                  tabList = response.tabs;
-                  const newIdx = prevSelectedId
-                    ? tabList.findIndex((t) => t.id === prevSelectedId)
-                    : -1;
-                  selectedIndex = newIdx >= 0 ? newIdx : 0;
-                  renderTabList();
-                }
+              if (chrome.runtime.lastError || !response || !response.tabs) return;
+              cachedTabList = response.tabs;
+              cachedCurrentTabId = response.currentTabId;
+              cachedPinnedTabs = response.pinnedTabs || [];
+
+              if (!isVisible && altPressed) {
+                // キャッシュなしで初回表示
+                openWithTabs(response.tabs, response.currentTabId);
+              } else if (isVisible) {
+                // 表示中なら最新データで再描画
+                const prevSelectedId = tabList[selectedIndex]?.id;
+                tabList = response.tabs;
+                const newIdx = prevSelectedId
+                  ? tabList.findIndex((t) => t.id === prevSelectedId)
+                  : -1;
+                selectedIndex = newIdx >= 0 ? newIdx : 0;
+                renderTabList();
               }
             });
-          } else {
-            // キャッシュなし: APIから取得
-            chrome.runtime.sendMessage({ type: "getTabList" }, (response) => {
-              if (response && response.tabs) {
-                cachedTabList = response.tabs;
-                cachedCurrentTabId = response.currentTabId;
-                cachedPinnedTabs = response.pinnedTabs || [];
-                if (altPressed) {
-                  openWithTabs(response.tabs, response.currentTabId);
-                }
-              }
-            });
+          } catch {
+            // runtime接続切れ時はキャッシュのみで動作
           }
         } else {
           // Alt+Tab 連打: 選択を循環
@@ -628,17 +649,17 @@
     return new URL("/favicon.ico", location.origin).href;
   }
 
-  // 現在の状態に応じた枠色を決定（ピン留め優先）
-  function getBorderColor() {
-    if (isPinned) return "#4ade80";
-    if (isActive) return "#facc15";
+  // 現在の状態に応じた枠スタイルを決定（ピン留め優先）
+  function getBorderStyle() {
+    if (isPinned) return { color: "#4ade80", shape: "circle" };
+    if (isActive) return { color: "#ef4444", shape: "rect" };
     return null;
   }
 
   // faviconに枠を描画して適用
   async function applyBadge() {
-    const color = getBorderColor();
-    if (!color) {
+    const style = getBorderStyle();
+    if (!style) {
       removeBadge();
       return;
     }
@@ -668,22 +689,49 @@
     canvas.height = size;
     const ctx = canvas.getContext("2d");
 
-    // faviconを少し縮小して描画
     const inner = size - border * 2;
-    if (faviconDataUrlCache) {
-      try {
-        const img = await loadImage(faviconDataUrlCache);
-        ctx.drawImage(img, border, border, inner, inner);
-      } catch {
-        // 描画失敗
-      }
-    }
 
-    // 枠を描画
-    ctx.strokeStyle = color;
-    ctx.lineWidth = border;
-    const offset = border / 2;
-    ctx.strokeRect(offset, offset, size - border, size - border);
+    if (style.shape === "circle") {
+      const center = size / 2;
+      const radius = (size - border) / 2;
+
+      // 円形クリッピングでfaviconを描画
+      if (faviconDataUrlCache) {
+        try {
+          const img = await loadImage(faviconDataUrlCache);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(center, center, radius - border / 2, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(img, border, border, inner, inner);
+          ctx.restore();
+        } catch {
+          // 描画失敗
+        }
+      }
+
+      // 円形の枠を描画
+      ctx.strokeStyle = style.color;
+      ctx.lineWidth = border;
+      ctx.beginPath();
+      ctx.arc(center, center, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      // 四角: faviconを描画してから枠
+      if (faviconDataUrlCache) {
+        try {
+          const img = await loadImage(faviconDataUrlCache);
+          ctx.drawImage(img, border, border, inner, inner);
+        } catch {
+          // 描画失敗
+        }
+      }
+
+      ctx.strokeStyle = style.color;
+      ctx.lineWidth = border;
+      const offset = border / 2;
+      ctx.strokeRect(offset, offset, size - border, size - border);
+    }
 
     badgeApplied = true;
     setFavicon(canvas.toDataURL("image/png"));
@@ -764,14 +812,11 @@
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", startFaviconObserver, { once: true });
-  } else {
-    startFaviconObserver();
-  }
-
   // background.jsから状態を取得してバッジを更新
+  let badgeSystemReady = false;
+
   function refreshBadgeState() {
+    if (!badgeSystemReady) return;
     chrome.runtime.sendMessage({ type: "getTabState" }, (response) => {
       if (chrome.runtime.lastError) return;
       if (response) {
@@ -783,16 +828,23 @@
     });
   }
 
-  // 初期化（ページ読み込み完了後）
-  if (document.readyState === "complete") {
-    refreshBadgeState();
-  } else {
-    window.addEventListener("load", refreshBadgeState, { once: true });
+  // セッション復元との干渉を防ぐため、ページ完全読み込み後に遅延して初期化
+  function initBadgeSystem() {
+    setTimeout(() => {
+      badgeSystemReady = true;
+      startFaviconObserver();
+      refreshBadgeState();
+
+      window.addEventListener("focus", refreshBadgeState);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") refreshBadgeState();
+      });
+    }, 2000);
   }
 
-  // フォーカス復帰時にも状態を再確認
-  window.addEventListener("focus", refreshBadgeState);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") refreshBadgeState();
-  });
+  if (document.readyState === "complete") {
+    initBadgeSystem();
+  } else {
+    window.addEventListener("load", initBadgeSystem, { once: true });
+  }
 })();
