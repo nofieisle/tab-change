@@ -649,10 +649,9 @@
     return new URL("/favicon.ico", location.origin).href;
   }
 
-  // 現在の状態に応じた枠スタイルを決定（ピン留め優先）
+  // 現在の状態に応じた枠スタイルを決定（ピン留めのみ）
   function getBorderStyle() {
     if (isPinned) return { color: "#4ade80", shape: "circle" };
-    if (isActive) return { color: "#ef4444", shape: "rect" };
     return null;
   }
 
