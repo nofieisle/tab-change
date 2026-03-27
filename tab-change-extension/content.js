@@ -13,6 +13,7 @@
   let altPressed = false;
   let cachedTabList = null; // タブリストのキャッシュ
   let cachedCurrentTabId = null;
+  let cachedPinnedTabs = null; // ピン留めタブのキャッシュ
 
   // タブリストを事前キャッシュ（Service Worker起動を促す）
   function prefetchTabList() {
@@ -22,6 +23,7 @@
         if (response && response.tabs) {
           cachedTabList = response.tabs;
           cachedCurrentTabId = response.currentTabId;
+          cachedPinnedTabs = response.pinnedTabs || [];
         }
       });
     } catch (e) {
@@ -166,6 +168,68 @@
         -webkit-box-orient: vertical;
         line-height: 1.3;
       }
+      .tab-change-pinned-section {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 0 0 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        margin-bottom: 4px;
+        flex-shrink: 0;
+      }
+      .tab-change-pinned-item-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 130px;
+        padding: 6px;
+        border-radius: 10px;
+        cursor: pointer;
+        border: 2px solid transparent;
+        box-sizing: border-box;
+        opacity: 0.75;
+      }
+      .tab-change-pinned-item-card:hover {
+        opacity: 1;
+        background: rgba(100, 149, 237, 0.3);
+        border-color: rgba(100, 149, 237, 1);
+        box-shadow: 0 0 8px rgba(100, 149, 237, 0.4);
+      }
+      .tab-change-pinned-item-card .tab-change-thumbnail {
+        width: 118px;
+        height: 74px;
+      }
+      .tab-change-pinned-item-card .tab-change-thumbnail-placeholder {
+        width: 118px;
+        height: 74px;
+      }
+      .tab-change-pinned-item-card .tab-change-thumbnail-placeholder .tab-change-favicon-large {
+        width: 32px;
+        height: 32px;
+      }
+      .tab-change-pinned-item-card .tab-change-thumbnail-placeholder .tab-change-favicon-default {
+        width: 32px;
+        height: 32px;
+        font-size: 15px;
+      }
+      .tab-change-pinned-item-card .tab-change-info {
+        margin-top: 6px;
+      }
+      .tab-change-pinned-item-card .tab-change-favicon-small {
+        width: 20px;
+        height: 20px;
+      }
+      .tab-change-pinned-item-card .tab-change-favicon-small-default {
+        width: 20px;
+        height: 20px;
+        font-size: 10px;
+      }
+      .tab-change-pinned-item-card .tab-change-title {
+        font-size: 11px;
+        -webkit-line-clamp: 2;
+      }
     `;
 
     tabListEl = document.createElement("div");
@@ -179,6 +243,68 @@
   // タブリストをレンダリング
   function renderTabList() {
     const fragment = document.createDocumentFragment();
+
+    // ピン留めタブセクション（通常タブと同じカード形式）
+    if (cachedPinnedTabs && cachedPinnedTabs.length > 0) {
+      const section = document.createElement("div");
+      section.className = "tab-change-pinned-section";
+
+      for (const pin of cachedPinnedTabs) {
+        const card = document.createElement("div");
+        card.className = "tab-change-pinned-item-card";
+        card.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          chrome.runtime.sendMessage(
+            { type: "switchTab", tabId: pin.id },
+            () => {}
+          );
+          hideOverlay();
+          resetState();
+        });
+
+        // サムネイル or プレースホルダー
+        if (pin.thumbnail) {
+          const thumb = document.createElement("img");
+          thumb.className = "tab-change-thumbnail";
+          thumb.src = pin.thumbnail;
+          thumb.alt = "";
+          thumb.loading = "eager";
+          thumb.onerror = () => {
+            thumb.replaceWith(createPlaceholder(pin));
+          };
+          card.appendChild(thumb);
+        } else {
+          card.appendChild(createPlaceholder(pin));
+        }
+
+        // Favicon + タイトル
+        const info = document.createElement("div");
+        info.className = "tab-change-info";
+
+        if (pin.favIconUrl) {
+          const favicon = document.createElement("img");
+          favicon.className = "tab-change-favicon-small";
+          favicon.src = pin.favIconUrl;
+          favicon.alt = "";
+          favicon.onerror = () => {
+            favicon.replaceWith(createSmallDefaultIcon(pin.title));
+          };
+          info.appendChild(favicon);
+        } else {
+          info.appendChild(createSmallDefaultIcon(pin.title));
+        }
+
+        const title = document.createElement("div");
+        title.className = "tab-change-title";
+        title.textContent = pin.title || "New Tab";
+        info.appendChild(title);
+
+        card.appendChild(info);
+        section.appendChild(card);
+      }
+
+      fragment.appendChild(section);
+    }
 
     tabList.forEach((tab, index) => {
       const item = document.createElement("div");
@@ -280,10 +406,10 @@
 
   // 選択アイテムの更新
   function updateSelection() {
-    const items = tabListEl.children;
-    for (let i = 0; i < items.length; i++) {
-      items[i].classList.toggle("selected", i === selectedIndex);
-    }
+    const items = tabListEl.querySelectorAll(".tab-change-item");
+    items.forEach((el, i) => {
+      el.classList.toggle("selected", i === selectedIndex);
+    });
 
     // 選択アイテムが見えるようにスクロール
     if (items[selectedIndex]) {
@@ -418,6 +544,7 @@
               if (response && response.tabs) {
                 cachedTabList = response.tabs;
                 cachedCurrentTabId = response.currentTabId;
+                cachedPinnedTabs = response.pinnedTabs || [];
                 // オーバーレイがまだ表示中で、タブ数が変わっていたら再描画
                 if (isVisible && response.tabs.length !== tabList.length) {
                   const prevSelectedId = tabList[selectedIndex]?.id;
@@ -436,6 +563,7 @@
               if (response && response.tabs) {
                 cachedTabList = response.tabs;
                 cachedCurrentTabId = response.currentTabId;
+                cachedPinnedTabs = response.pinnedTabs || [];
                 if (altPressed) {
                   openWithTabs(response.tabs, response.currentTabId);
                 }

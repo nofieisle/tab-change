@@ -224,24 +224,51 @@ async function handleGetTabList(senderTabId) {
 
   const tabs = await chrome.tabs.query({});
 
+  const sortByPosition = (a, b) => {
+    if (a.windowId !== b.windowId) return a.windowId - b.windowId;
+    return a.index - b.index;
+  };
+
   // ブラウザのタブ順（ウィンドウID → タブインデックス順）でソート
   const sorted = tabs
     .filter((tab) => isAccessible(tab.url) && !tab.pinned)
-    .sort((a, b) => {
-      if (a.windowId !== b.windowId) return a.windowId - b.windowId;
-      return a.index - b.index;
+    .sort(sortByPosition);
+
+  const result = sorted.map((tab) => {
+    let favIcon = originalFavicons[tab.id] || "";
+    if (!favIcon && tab.favIconUrl && !tab.favIconUrl.startsWith("data:")) {
+      favIcon = tab.favIconUrl;
+    }
+    return {
+      id: tab.id,
+      title: tab.title || "New Tab",
+      favIconUrl: favIcon,
+      url: tab.url || "",
+      windowId: tab.windowId,
+      thumbnail: thumbnailCache[tab.id] || "",
+    };
+  });
+
+  // ピン留めタブも別途返す（faviconはdata URL=枠付き加工済みを除外）
+  const pinnedTabs = tabs
+    .filter((tab) => isAccessible(tab.url) && tab.pinned)
+    .sort(sortByPosition)
+    .map((tab) => {
+      let favIcon = originalFavicons[tab.id] || "";
+      if (!favIcon && tab.favIconUrl && !tab.favIconUrl.startsWith("data:")) {
+        favIcon = tab.favIconUrl;
+      }
+      return {
+        id: tab.id,
+        title: tab.title || "New Tab",
+        favIconUrl: favIcon,
+        url: tab.url || "",
+        windowId: tab.windowId,
+        thumbnail: thumbnailCache[tab.id] || "",
+      };
     });
 
-  const result = sorted.map((tab) => ({
-    id: tab.id,
-    title: tab.title || "New Tab",
-    favIconUrl: originalFavicons[tab.id] || tab.favIconUrl || "",
-    url: tab.url || "",
-    windowId: tab.windowId,
-    thumbnail: thumbnailCache[tab.id] || "",
-  }));
-
-  return { tabs: result, currentTabId: senderTabId };
+  return { tabs: result, pinnedTabs, currentTabId: senderTabId };
 }
 
 // 指定タブを閉じる
