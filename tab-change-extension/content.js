@@ -478,4 +478,193 @@
       resetState();
     }
   });
+
+  // --- favicon枠バッジ機能（ピン留め=緑、アクティブ=黄） ---
+  let originalFaviconHref = null;
+  let isPinned = false;
+  let isActive = false;
+  let badgeApplied = false;
+  let faviconDataUrlCache = null;
+
+  // 現在のfaviconのURLを取得（複数のrel形式に対応）
+  function getCurrentFaviconHref() {
+    const selectors = [
+      'link[rel="icon"]',
+      'link[rel="shortcut icon"]',
+      'link[rel~="icon"]',
+    ];
+    for (const sel of selectors) {
+      const link = document.querySelector(sel);
+      if (link && link.href) return link.href;
+    }
+    return new URL("/favicon.ico", location.origin).href;
+  }
+
+  // 現在の状態に応じた枠色を決定（ピン留め優先）
+  function getBorderColor() {
+    if (isPinned) return "#4ade80";
+    if (isActive) return "#facc15";
+    return null;
+  }
+
+  // faviconに枠を描画して適用
+  async function applyBadge() {
+    const color = getBorderColor();
+    if (!color) {
+      removeBadge();
+      return;
+    }
+
+    if (!originalFaviconHref) {
+      originalFaviconHref = getCurrentFaviconHref();
+    }
+
+    // faviconのdata URLをキャッシュから取得、なければfetch
+    if (!faviconDataUrlCache && originalFaviconHref) {
+      try {
+        const { dataUrl } = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({ type: "fetchFavicon", url: originalFaviconHref }, (resp) => {
+            resolve(resp || { dataUrl: null });
+          });
+        });
+        faviconDataUrlCache = dataUrl;
+      } catch {
+        // 取得失敗
+      }
+    }
+
+    const size = 32;
+    const border = 5;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+
+    // faviconを少し縮小して描画
+    const inner = size - border * 2;
+    if (faviconDataUrlCache) {
+      try {
+        const img = await loadImage(faviconDataUrlCache);
+        ctx.drawImage(img, border, border, inner, inner);
+      } catch {
+        // 描画失敗
+      }
+    }
+
+    // 枠を描画
+    ctx.strokeStyle = color;
+    ctx.lineWidth = border;
+    const offset = border / 2;
+    ctx.strokeRect(offset, offset, size - border, size - border);
+
+    badgeApplied = true;
+    setFavicon(canvas.toDataURL("image/png"));
+  }
+
+  // data URLからImageを読み込む
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  // faviconリンク要素を差し替え
+  function setFavicon(dataUrl) {
+    const existing = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]');
+    existing.forEach((el) => el.remove());
+
+    const link = document.createElement("link");
+    link.rel = "icon";
+    link.href = dataUrl;
+    document.head.appendChild(link);
+  }
+
+  // バッジを除去してオリジナルに戻す
+  function removeBadge() {
+    if (!badgeApplied) return;
+    badgeApplied = false;
+    if (originalFaviconHref) {
+      setFavicon(originalFaviconHref);
+    } else {
+      const link = document.querySelector('link[rel~="icon"]');
+      if (link && link.href.startsWith("data:")) {
+        link.remove();
+      }
+    }
+  }
+
+  // 状態更新してバッジを再描画
+  function updateBadge() {
+    if (isPinned || isActive) {
+      applyBadge();
+    } else {
+      removeBadge();
+      originalFaviconHref = null;
+      faviconDataUrlCache = null;
+    }
+  }
+
+  // background.jsからの通知を受信
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === "pinnedChanged") {
+      isPinned = message.pinned;
+      updateBadge();
+    }
+    if (message.type === "activeChanged") {
+      isActive = message.active;
+      updateBadge();
+    }
+  });
+
+  // favicon変更を監視（SPAなどでfaviconが動的に変わる場合に対応）
+  const faviconObserver = new MutationObserver(() => {
+    if (!badgeApplied) return;
+    const currentHref = getCurrentFaviconHref();
+    if (currentHref && !currentHref.startsWith("data:")) {
+      originalFaviconHref = currentHref;
+      faviconDataUrlCache = null;
+      applyBadge();
+    }
+  });
+
+  function startFaviconObserver() {
+    if (document.head) {
+      faviconObserver.observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startFaviconObserver, { once: true });
+  } else {
+    startFaviconObserver();
+  }
+
+  // background.jsから状態を取得してバッジを更新
+  function refreshBadgeState() {
+    chrome.runtime.sendMessage({ type: "getTabState" }, (response) => {
+      if (chrome.runtime.lastError) return;
+      if (response) {
+        const changed = isPinned !== response.pinned || isActive !== response.active;
+        isPinned = response.pinned;
+        isActive = response.active;
+        if (changed) updateBadge();
+      }
+    });
+  }
+
+  // 初期化（ページ読み込み完了後）
+  if (document.readyState === "complete") {
+    refreshBadgeState();
+  } else {
+    window.addEventListener("load", refreshBadgeState, { once: true });
+  }
+
+  // フォーカス復帰時にも状態を再確認
+  window.addEventListener("focus", refreshBadgeState);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshBadgeState();
+  });
 })();
