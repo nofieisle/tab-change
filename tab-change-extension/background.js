@@ -156,43 +156,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   delete originalFavicons[tabId];
 });
 
-// ピン留め状態が変わったらcontent scriptに通知
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if ("pinned" in changeInfo) {
-    chrome.tabs.sendMessage(tabId, {
-      type: "pinnedChanged",
-      pinned: changeInfo.pinned,
-    }).catch(() => {});
-  }
-});
-
-// アクティブタブが変わったらcontent scriptに通知
-chrome.tabs.onActivated.addListener(async (activeInfo) => {
-  const tabs = await chrome.tabs.query({ windowId: activeInfo.windowId });
-  for (const tab of tabs) {
-    chrome.tabs.sendMessage(tab.id, {
-      type: "activeChanged",
-      active: tab.id === activeInfo.tabId,
-    }).catch(() => {});
-  }
-});
 
 // メッセージハンドラ
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "getTabState") {
-    chrome.tabs.get(sender.tab.id).then((tab) => {
-      sendResponse({ pinned: tab.pinned, active: tab.active });
-    }).catch(() => {
-      sendResponse({ pinned: false, active: false });
-    });
-    return true;
-  }
-
-  if (message.type === "fetchFavicon") {
-    fetchAsDataUrl(message.url).then(sendResponse);
-    return true;
-  }
-
   if (message.type === "getTabList") {
     handleGetTabList(sender.tab?.id).then(sendResponse);
     return true; // 非同期レスポンスを示す
@@ -251,17 +217,11 @@ async function handleGetTabList(senderTabId) {
 
   // ブラウザのタブ順（インデックス順）でソート
   const sorted = tabs
-    .filter((tab) => isAccessible(tab.url) && !tab.pinned)
+    .filter((tab) => isAccessible(tab.url))
     .sort((a, b) => a.index - b.index)
     .map(mapTab);
 
-  // ピン留めタブ（faviconはdata URL=枠付き加工済みを除外）
-  const pinnedTabs = tabs
-    .filter((tab) => isAccessible(tab.url) && tab.pinned)
-    .sort((a, b) => a.index - b.index)
-    .map(mapTab);
-
-  return { tabs: sorted, pinnedTabs, currentTabId: senderTabId };
+  return { tabs: sorted, currentTabId: senderTabId };
 }
 
 // 指定タブを閉じる
@@ -282,23 +242,6 @@ async function handleSwitchTab(tabId) {
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
-  }
-}
-
-// URLを取得してdata URLに変換（host_permissionsによりCORS制限なし）
-async function fetchAsDataUrl(url) {
-  try {
-    const resp = await fetch(url);
-    if (!resp.ok) return { dataUrl: null };
-    const blob = await resp.blob();
-    const reader = new FileReader();
-    return new Promise((resolve) => {
-      reader.onloadend = () => resolve({ dataUrl: reader.result });
-      reader.onerror = () => resolve({ dataUrl: null });
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return { dataUrl: null };
   }
 }
 
